@@ -1,0 +1,56 @@
+# The stack as a developer runs it locally.
+#
+# DevSandbox generates its own compose file for the integration capability;
+# this one is here because a real microservices repository has one.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: shopstack
+      POSTGRES_USER: shopstack
+      POSTGRES_DB: shopstack
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopstack"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  # The host side of each mapping is deliberately high. 8080 and 3000 are the
+  # two busiest ports on a developer machine -- Jenkins, Tomcat, a React dev
+  # server -- and a stack that will not start because something else owns the
+  # port teaches nothing about the stack.
+  inventory:
+    build: ./services/inventory
+    environment:
+      PORT: 8080
+    ports:
+      - "18080:8080"
+
+  orders:
+    build: ./services/orders
+    environment:
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13000:3000"
+
+  gateway:
+    build: ./services/gateway
+    environment:
+      ORDERS_URL: http://orders:3000
+      INVENTORY_URL: http://inventory:8080
+    depends_on:
+      - orders
+      - inventory
+      - redis
+    ports:
+      - "18000:8000"
